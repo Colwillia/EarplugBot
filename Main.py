@@ -2,7 +2,7 @@
 #This is a bot that replies to comments that mentions disposable earplugs
 #with a youtube link on properly inserting them
 
-import praw,datetime,time,re,prawcore
+import praw,datetime,time,re,prawcore,random
 from modules import TC, SecondsToMins
 from modules import ClientInfo #module that stores client auth information
 from praw.models import MoreComments
@@ -17,8 +17,10 @@ from praw.models import MoreComments
 #searches input string for words related to disposable/foam earplugs
 def phraseMatch(instr):
 
-    x = re.search('(3M|foam|disposable).*(earplug|ear.*plug|plug)', instr, re.IGNORECASE)
+    x = re.search('(soft.?|mack.*|3M.*|foam.*|disposable.*)(earplug|(ear.*plug)|plug)', z, re.IGNORECASE)
+    #x = re.search('(soft|mack|3M|foam|disposable).*(earplug|ear.*plug|plug)', instr, re.IGNORECASE)
     #x = re.search('sauce', instr, re.IGNORECASE)
+    #x = re.search('earplug|ear plug|ears plug', instr, re.IGNORECASE)
     
     if x:
         return True
@@ -89,7 +91,7 @@ def findInUser(inUser,maxDays):
     redditor = reddit.redditor(inUser)
     
     try:
-        for userComment in redditor.comments.new(limit = 200): #Might lower amount to
+        for userComment in redditor.comments.new(limit = 200): #Might lower amount to 
                                                                 #prevent getting bogged down by bot accounts
             
             ageLimit = time.time() - userComment.created_utc > TC.DAY*maxDays
@@ -142,6 +144,9 @@ def findInUser(inUser,maxDays):
         #print(f"reached end of comments")
     except prawcore.exceptions.Forbidden:
         print("403 error")
+        errlog = open("logs\errors.txt","a")
+        errlog.write("u\\" + inUser + "\n")
+        errlog.close
     except prawcore.exceptions.NotFound:
         print("404 error")
     except:
@@ -149,6 +154,75 @@ def findInUser(inUser,maxDays):
 
     
     return
+
+
+#args reddit instance, int, dictionary
+#returns: Dictionary
+#Searches list of subbreddits for 
+def subSearch(reddit, maxDays, subName):
+
+    startTime = time.time()
+    
+    #for subName in subList:
+    totalposts = 0
+    totalcomments = 0
+    print(f"subname: {subName}")
+    for submission in reddit.subreddit(subName).new(limit=None):
+        totalposts += 1
+        
+
+        ageLimit = time.time() - submission.created_utc > TC.DAY*maxDays
+        if ageLimit:
+            break 
+
+        submission.comments.replace_more(limit=None)
+        for userComment in submission.comments.list():
+            totalcomments += 1
+
+            if phraseMatch(userComment.body):
+
+                post = userComment.submission
+                submissId = post.id
+                subTitle = post.subreddit
+                subUTC = post.created_utc
+                
+                #print(submissId)
+                try:
+                    rdlogfile = open("logs/idlog.txt","r")
+                except:
+                    rdlogfile = open("logs/idlog.txt","x")
+                    rdlogfile.close
+                    rdlogfile = open("logs/idlog.txt","r")
+
+                if(rdlogfile.read().find(submissId) < 0): #checking 
+                    rdlogfile.close()
+                    
+                    #log before sending reply to avoid unlogged events
+                    #writting submission ID to the logfile
+                    idLogFile = open("logs/idlog.txt","a")
+                    idLogFile.write(submissId + "\n")
+                    idLogFile.close()
+
+                    subLogFile = open("logs/subsearchlog.txt", "a")
+                    subLogFile.write("r\\" + str(subTitle) + ":" + str(subUTC) + ":" + "\n" )
+                    subLogFile.close
+
+                    commentLogFile = open("logs/subsearchcommentlog.txt", "a")
+                    commentLogFile.write("###############################################################\n")
+                    commentLogFile.write("Subreddit: " + "r\\" + str(subTitle) + "\n")
+                    commentLogFile.write("User: " + " u\\" + str(userComment.author) + "\n")
+                    commentLogFile.write("Date: " + str(datetime.datetime.fromtimestamp(userComment.created_utc)) + "\n\n")
+                    commentLogFile.write(str(userComment.body.encode("utf-8")) + "\n")
+                    commentLogFile.close
+                    #send reply
+                else:
+                    rdlogfile.close()
+    print(f"totalcommentse: {totalcomments}")
+    print(f"totalPosts: {totalposts}")
+                
+                
+
+
 
 
 
@@ -169,6 +243,25 @@ reddit = praw.Reddit(
 )
 
 userList = {}
+SUB_LIST_BANK = ["aspergirls",
+"misophonia",
+"livesound",
+"formula1",
+"ADHD",
+"GuitarAmps",
+"autism",
+"ClayBusters",
+"NFA",
+"Firearms",
+"guns",
+"motorcycles",
+"punk",
+"AutisticAdults",
+"aves"
+]
+
+subList = []
+
 pastAncestors = {}
 pastSubID = ""
 while(True):
@@ -216,8 +309,25 @@ while(True):
         print(f"elapsed time: {SecondsToMins.secsToMins(end-start)}")
         print("\n")
 
+    if  not len(subList):
+        subList = SUB_LIST_BANK.copy()
 
 
+
+    print("Searching Subbreddits...")
+    
+    subSearchStart = time.time()
+    elapsedTime = time.time() - subSearchStart
+
+    while(len(subList) > 0 and elapsedTime < TC.TEN_MINUTES):
+        
+        x = random.randint(0,len(subList) - 1)
+        subSearch(reddit,10,subList.pop(x))
+        elapsedTime = time.time() - subSearchStart
+    
+   
+
+    print(f"Elapsed subSearch time: {SecondsToMins.secsToMins(elapsedTime)}") #124 minutes and 52 seconds
 
     print("Searching user comments...")
 
